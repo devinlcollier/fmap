@@ -6,46 +6,26 @@ import (
 	"os"
 	"log"
 	"encoding/csv"
+	"strconv"
 )
-
-// type Keyable interface {
-// 	hash.Hash64
-// }
-
-// type HashTable[K Keyable, V any] struct {
-// 	arraysize int
-// 	buckets [12]*bucket[K, V]
-// }
-
-// type bucket[K Keyable, V any] struct {
-// 	head *bucketnode[K, V]
-// }
-
-// type bucketnode[K Keyable, V any] struct {
-// 	key   K
-// 	value V
-// 	next  *bucketnode[K, V]
-// }
-
-// func Init[K Keyable, V any]() *HashTable[K, V] {
-// 	ret_table := &HashTable[K, V]{arraysize: 12}
-
-// 	for i := range ret_table.buckets {
-// 		ret_table.buckets[i] = &bucket[K, V]{}
-// 	}
-// 	return ret_table
-// }
 
 type HashMap[K comparable, V any] struct {
 	hasher func(K) uint64
 	buckets []*bucket[K, V]
+	buckets_size int
+	map_size int
 	collisions int
+	total_cost int
+	longest_probe uint64
 }
 
 func New[K comparable, V any](hasher_func func(K) uint64) *HashMap[K, V] {
 	ret_map := new(HashMap[K, V])
 	ret_map.hasher = hasher_func
-	ret_map.buckets = make([]*bucket[K, V], 1000)
+	ret_map.buckets_size = 1000
+	ret_map.map_size = 0
+	ret_map.longest_probe = 0
+	ret_map.buckets = make([]*bucket[K, V], ret_map.buckets_size)
 
 	return ret_map
 }
@@ -53,21 +33,49 @@ func New[K comparable, V any](hasher_func func(K) uint64) *HashMap[K, V] {
 func (hm *HashMap[K, V]) Put(key K, value V) {
 	hash := hm.hasher(key)
 	//index := fibonacci_index(hash, 55)
-	index := modulo_index(hash, uint64(len(hm.buckets)))
-	fmt.Println("key:", key, index)
-	if hm.buckets[index] != nil {
-		fmt.Println("collision, attempt:", key, " existing:", hm.buckets[index].key)
-		hm.collisions++
+	hm.insert(&bucket[K, V]{key: key, value: value, hash: hash})
+}
+
+func (hm *HashMap[K, V]) insert(b *bucket[K, V]) {
+	index := modulo_index(b.hash, uint64(len(hm.buckets)))
+	
+	var probeposition uint64 = 0
+	for hm.buckets[index] != nil {
+		hm.collisions += 1
+		probeposition += 1
+		index = modulo_index(b.hash + probeposition, uint64(len(hm.buckets)))
 	}
-	hm.buckets[index] = &bucket[K, V]{key: key, value: value, hash: hash}
+
+	if probeposition > hm.longest_probe {
+		hm.longest_probe = probeposition
+	}
+
+	fmt.Println("key:", b.key, index)
+
+	hm.buckets[index] = b
+	hm.map_size += 1
 }
 
 func (hm *HashMap[K, V]) Get(key K) V {
 	hash := hm.hasher(key)
-	//index := fibonacci_index(hash, 57)
-	index := modulo_index(hash, uint64(len(hm.buckets)))
-	fmt.Println("key:", key, index)
+	index := hm.search(hash)
 	return hm.buckets[index].value
+}
+
+func (hm *HashMap[K, V]) search(hash uint64) uint64 {
+	index := modulo_index(hash, uint64(len(hm.buckets)))
+
+	var probeposition uint64 = 0
+
+	for probeposition <= hm.longest_probe && hm.buckets[index] != nil {
+		if hm.buckets[index].hash == hash {
+			return index
+		}
+		probeposition += 1
+		index = modulo_index(hash + probeposition, uint64(len(hm.buckets)))
+	}
+
+	return 0
 }
 
 type bucket[K comparable, V any] struct {
@@ -75,53 +83,6 @@ type bucket[K comparable, V any] struct {
 	key K
 	value V
 }
-
-// func (hashtable *HashTable[K, V]) Insert(key K, value V) {
-// 	index := int(fibonacci_hash(key.Sum64(), 60))
-// 	hashtable.buckets[index].insert(key, value)
-// }
-
-// func (hashtable *HashTable[K, V]) Search(key K) bool {
-// 	index := int(fibonacci_hash(key.Sum64(), 60))
-// 	return hashtable.buckets[index].search(key)
-// }
-
-// func (hashtable *HashTable[K, V]) Delete(key K) {
-// 	index := int(fibonacci_hash(key.Sum64(), 60))
-// 	hashtable.buckets[index].delete(key)
-// }
-
-// func (b *bucket[K, V]) insert(key K, value V) {
-// 	newNode := &bucketnode[K, V]{key: key, value: value}
-// 	newNode.next = b.head
-// 	b.head = newNode
-// }
-
-// func (b *bucket[K, V]) search(key K) bool {
-// 	currentNode := b.head
-// 	for currentNode != nil {
-// 		if currentNode.key == key {
-// 			return true
-// 		}
-// 		currentNode = currentNode.next
-// 	}
-// 	return false
-// }
-
-// func (b *bucket[K, V]) delete(key K) {
-// 	if b.head.key == key {
-// 		b.head = b.head.next
-// 		return
-// 	}
-
-// 	previousNode := b.head
-// 	for previousNode.next != nil {
-// 		if previousNode.next.key == key {
-// 			previousNode.next = previousNode.next.next
-// 		}
-// 		previousNode = previousNode.next
-// 	}
-// }
 
 func fibonacci_index(hash uint64, bits int) uint64 {
 	return (hash * 11400714819323198485) >> bits
@@ -175,10 +136,16 @@ func main() {
 	}
 
 	hm := New[string, string](carter_wegman_hasher)
-	for i := 0; i < 90; i++ {
+	for i := 0; i < 400; i++ {
 		//fmt.Println(unique_words[i], ",", unique_word_map[unique_words[i]])
 		hm.Put(unique_words[i], unique_word_map[unique_words[i]])
 	}
-	fmt.Println(hm.buckets)
+
+	for i := 0; i < 10; i++ {
+		fmt.Println("hm.Get(unique_words[" + strconv.Itoa(i) + "])",unique_words[i] ,hm.Get(unique_words[i]))
+	}
+
 	fmt.Println("collisions", hm.collisions)
+	fmt.Println("map size", hm.map_size)
+	fmt.Println("longest_probe", hm.longest_probe)
 }
