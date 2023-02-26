@@ -1,5 +1,7 @@
 package fmap
 
+import "math"
+
 type HashMap[K comparable, V any] struct {
 	hasher func(K) uint64
 	buckets []*bucket[K, V]
@@ -8,6 +10,12 @@ type HashMap[K comparable, V any] struct {
 	collisions int
 	total_cost int
 	longest_probe uint64
+}
+
+type bucket[K comparable, V any] struct {
+	hash uint64
+	key K
+	value V
 }
 
 func (hm *HashMap[K, V]) GetCollisions() int {
@@ -25,7 +33,7 @@ func (hm *HashMap[K, V]) GetLongestProbe() uint64 {
 func New[K comparable, V any](hasher_func func(K) uint64) *HashMap[K, V] {
 	ret_map := new(HashMap[K, V])
 	ret_map.hasher = hasher_func
-	ret_map.buckets_size = 1000
+	ret_map.buckets_size = 128
 	ret_map.map_size = 0
 	ret_map.longest_probe = 0
 	ret_map.buckets = make([]*bucket[K, V], ret_map.buckets_size)
@@ -53,14 +61,14 @@ func (hm *HashMap[K, V]) Put(key K, value V) {
 }
 
 func insert[K comparable, V any](b *bucket[K, V], buckets []*bucket[K, V], length int) (int, uint64) {
-	index := modulo_index(b.hash, uint64(length))
+	index := fibonacci_index(b.hash, uint64(length))
 	
 	var probeposition uint64 = 0
 	var collisions int = 0;
 	for buckets[index] != nil {
 		collisions += 1
 		probeposition += 1
-		index = modulo_index(b.hash + probeposition, uint64(length))
+		index = fibonacci_index(b.hash + probeposition, uint64(length))
 	}
 
 	buckets[index] = b
@@ -99,7 +107,7 @@ func (hm *HashMap[K, V]) Get(key K) V {
 }
 
 func (hm *HashMap[K, V]) search(hash uint64) uint64 {
-	index := modulo_index(hash, uint64(len(hm.buckets)))
+	index := fibonacci_index(hash, uint64(len(hm.buckets)))
 
 	var probeposition uint64 = 0
 
@@ -108,22 +116,13 @@ func (hm *HashMap[K, V]) search(hash uint64) uint64 {
 			return index
 		}
 		probeposition += 1
-		index = modulo_index(hash + probeposition, uint64(len(hm.buckets)))
+		index = fibonacci_index(hash + probeposition, uint64(len(hm.buckets)))
 	}
 
 	return 0
 }
 
-type bucket[K comparable, V any] struct {
-	hash uint64
-	key K
-	value V
-}
-
-func fibonacci_index(hash uint64, bits int) uint64 {
-	return (hash * 11400714819323198485) >> bits
-}
-
-func modulo_index(hash uint64, size uint64) uint64 {
-	return hash % size;
+func fibonacci_index(hash uint64, size uint64) uint64 {
+	var bits = int(math.Round(math.Log2(float64(size))))
+	return (hash * 11400714819323198485) >> (64 - bits)
 }
