@@ -10,7 +10,9 @@ The caller must provide a hash function that takes whatever concrete type the ke
 
 Below is an example.
 
-`// import "hash/fnv"
+```
+{
+// import "hash/fnv"
 hasher := func(k string) uint64 {
 	h := fnv.New64a()
 	h.Write([]byte(k))
@@ -18,4 +20,6 @@ hasher := func(k string) uint64 {
 }
 
 hm := fmap.New[string, string](hasher)
-hm.Put("This is a unique key", "This is the value for the key")`
+hm.Put("This is a unique key", "This is the value for the key")
+}
+```
